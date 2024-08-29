@@ -5,39 +5,73 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
+const request = require('request');
+
 
 const config = {
-    user: 'sa',
-    password: 'Troya963+-',
-    server: 'localhost',
-    database: 'MathApp',
-    options: {
-      encrypt: false,
-      enableArithAbort: true
-    }
-  };
+  user: 'sa',
+  password: 'Troya963+-',
+  server: 'localhost',
+  database: 'MathApp',
+  options: {
+    encrypt: false,
+    enableArithAbort: true
+  }
+};
+
+const appLogin = express();
+const portLogin = 5175;
+appLogin.use(cors());
+appLogin.use(bodyParser.json());
 
 appSignStudent = express();
-const portSignStudent=5176;
-
+const portSignStudent = 5176;
 appSignStudent.use(cors());
 appSignStudent.use(bodyParser.json());
 
 appSignTeach = express();
-const portSignTeach=5177;
-
+const portSignTeach = 5177;
 appSignTeach.use(cors());
 appSignTeach.use(bodyParser.json());
 
 appSignParent = express();
-const portSignParent=5178;
-
+const portSignParent = 5178;
 appSignParent.use(cors());
 appSignParent.use(bodyParser.json());
 
+//login sorgusu
+appLogin.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const pool = await sql.connect(config);
+    const result = await pool.request()
+      .input('email', sql.VarChar, email)
+      .query('SELECT PasswordHash FROM AllUsers WHERE Email = @Email');
+
+    if (result.recordset.length > 0) {
+      const hashedPassword = result.recordset[0].PasswordHash;
+      const match = await bcrypt.compare(password, hashedPassword);
+      if (match) {
+        res.status(200).json({ message: 'Login successful!' });
+      } else {
+        res.status(401).json({ message: 'Invalid credentials. Password does not match.' });
+      }
+    } else {
+      res.status(401).json({ message: 'Invalid credentials. Email not found.' });
+    }
+  } catch (error) {
+    console.error('Database error:', error);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+appLogin.listen(portLogin, () => {
+  console.log(`Login server is running on port ${portLogin}`);
+});
+
 // Kayıt rotası
 appSignStudent.post('/signup/StudentSignUp', async (req, res) => {
-  const { email, firstName, lastName, username, StClass, password,  birthDate, Şehir} = req.body;
+  const { email, firstName, lastName, username, StClass, password, birthDate, Şehir } = req.body;
 
   if (!username || !password || !email || !firstName || !lastName || !StClass || !birthDate || !Şehir) {
     return res.status(400).json({ error: 'Lütfen tüm alanları doldurun.' });
@@ -55,22 +89,22 @@ appSignStudent.post('/signup/StudentSignUp', async (req, res) => {
       StudentId = 1003;
       break;
     case '4':
-        StudentId = 1004;
-        break;
+      StudentId = 1004;
+      break;
     case '5':
-        StudentId = 1005;
-        break;
+      StudentId = 1005;
+      break;
     case '6':
-        StudentId = 1006;
-        break;
+      StudentId = 1006;
+      break;
     case '7':
-        StudentId = 1007;
-        break;
+      StudentId = 1007;
+      break;
     case '8':
-        StudentId = 1008;
-        break;
+      StudentId = 1008;
+      break;
     default:
-      StudentId = 0; 
+      StudentId = 0;
       break;
   }
 
@@ -88,10 +122,10 @@ appSignStudent.post('/signup/StudentSignUp', async (req, res) => {
       .input('Sınıf', sql.Int, StClass)
       .input('BirthDate', sql.NVarChar, birthDate)
       .input('City', sql.NVarChar, Şehir)
-      .input('Ögr_ID', sql.Int, StudentId)
+      .input('SınıfID', sql.Int, StudentId)
       .query(`
-        INSERT INTO StudentUsers (Ögr_ID, ÖgrUserName, PasswordHash, Email, Ögr_Ad, Ögr_Soyad, Sınıf, BirthDate, City )
-        VALUES (@Ögr_ID,@ÖgrUserName, @PasswordHash, @Email, @Ögr_Ad, @Ögr_Soyad,  @Sınıf, @BirthDate, @City)
+        INSERT INTO StudentUsers (MainID, ÖgrUserName, PasswordHash, Email, Ögr_Ad, Ögr_Soyad, Sınıf, SınıfID, BirthDate, City )
+        VALUES (1,@ÖgrUserName, @PasswordHash, @Email, @Ögr_Ad, @Ögr_Soyad,  @Sınıf,@SınıfID, @BirthDate, @City)
       `);
 
     res.status(201).json({ message: 'Kullanıcı başarıyla kaydedildi' });
@@ -107,21 +141,29 @@ appSignStudent.listen(portSignStudent, () => {
 
 // Kayıt rotası
 appSignTeach.post('/signup/TeacherSingUp', async (req, res) => {
-  const { email, firstName, lastName, username, Lessons, password , birthDate, Şehir} = req.body;
+  const { email, firstName, lastName, username, Lessons, password, birthDate, Şehir } = req.body;
 
   if (!username || !password || !email || !firstName || !lastName || !Lessons || !birthDate || !Şehir) {
     return res.status(400).json({ error: 'Lütfen tüm alanları doldurun.' });
   }
 
-  let teachID;
-  // Lessons değerine göre Teach_ID belirleme
+  let LessonsID;
+  // Lessons değerine göre LessonID belirleme
   switch (Lessons.toLowerCase()) {
     case 'matematik':
-      teachID = 101;
+      LessonsID = 101;
       break;
-    // Diğer dersler için gerekli değerleri ekleyin
+    case 'Türkçe':
+      LessonsID = 102;
+      break;
+    case 'Fen Bİlgisi':
+      LessonsID = 102;
+      break;
+    case 'İngilizce':
+      LessonsID = 103;
+      break;
     default:
-      teachID = 0; // Varsayılan değer veya uygun bir değer
+      LessonsID = 0; // Varsayılan değer veya uygun bir değer
       break;
   }
 
@@ -139,10 +181,10 @@ appSignTeach.post('/signup/TeacherSingUp', async (req, res) => {
       .input('Lessons', sql.NVarChar, Lessons)
       .input('BirthDate', sql.Date, birthDate)
       .input('City', sql.NVarChar, Şehir)
-      .input('Teac_ID', sql.Int, teachID)
+      .input('LessonsID', sql.Int, LessonsID)
       .query(`
-        INSERT INTO TeacherUsers (Teac_ID,TeacUserName, PasswordHash, Email, Teac_Ad, Teac_Soyad, Lessons, BirthDate, City )
-        VALUES (@Teac_ID,@TeacUserName, @PasswordHash, @Email, @Teac_Ad, @Teac_Soyad,  @Lessons, @BirthDate, @City)
+        INSERT INTO TeacherUsers (MainID,TeacUserName, PasswordHash, Email, Teac_Ad, Teac_Soyad, Lessons,LessonsID, BirthDate, City )
+        VALUES (2,@TeacUserName, @PasswordHash, @Email, @Teac_Ad, @Teac_Soyad,  @Lessons,@LessonsID, @BirthDate, @City)
       `);
 
     res.status(201).json({ message: 'Kullanıcı başarıyla kaydedildi' });
@@ -168,30 +210,32 @@ appSignParent.post('/signup/ParentsSignUp', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const pool = await sql.connect(config);
 
-    const result = await request
-      .input('Ögr_Ad', sql.NVarChar, ÖgrenciAdı)
-      input('Ögr_Soyad', sql.NVarChar, ÖgrenciSoyadı) // Ögr_Adı bir NVarChar olabilir, ihtiyaca göre değiştirin
-      .query('SELECT * FROM StudentUsers WHERE Ögr_Ad = @Ögr_Ad END Öğr_Soyad=@Ögr_Soyad');
+    const request = pool.request();
 
+    // Öğrenci bilgilerini sorgulama
+    const result = await request
+      .input('Ögr_Ad', sql.NVarChar, ÖğrenciAdı)
+      .input('Ögr_Soyad', sql.NVarChar, ÖğrenciSoyadı)
+      .query('SELECT * FROM StudentUsers WHERE Ögr_Ad = @Ögr_Ad AND Ögr_Soyad = @Ögr_Soyad');
     if (result.recordset.length === 0) {
       return res.status(404).json({ error: 'Öğrenci bulunamadı.' });
     }
 
-    const Öğr_ID = result.recordset[0].StudentID;
+    const Öğr_ID = result.recordset[0].Ögr_ID;
 
     await pool.request()
-      .input('Ögr_ID', sql.int, Öğr_ID)
+      .input('Ögr_ID', sql.Int, Öğr_ID)
       .input('Email', sql.NVarChar, email)
       .input('Prnt_Ad', sql.NVarChar, firstName)
       .input('Prnt_Soyad', sql.NVarChar, lastName)
       .input('PrntUserName', sql.NVarChar, username)
       .input('PasswordHash', sql.NVarChar, hashedPassword)
       .input('Tlf', sql.NVarChar, Tlf)
-      .input('birthDate', sql.Date,birthDate)
+      .input('birthDate', sql.Date, birthDate)
       .input('City', sql.NVarChar, Şehir)
       .query(`
-        INSERT INTO ParentsUsers (PrntUserName, PasswordHash, Email, Prnt_Ad, Prnt_Soyad, Ögr_ID, birthDate, City,Tlf)
-        VALUES (@PrntUserName, @PasswordHash, @Email, @Prnt_Ad, @Prnt_Soyad,@Ögr_ID, @BirthDate, @City,@Tlf)
+        INSERT INTO ParentsUsers (MainID,PrntUserName, PasswordHash, Email, Prnt_Ad, Prnt_Soyad, Ögr_ID, birthDate, City, Tlf)
+        VALUES (3,@PrntUserName, @PasswordHash, @Email, @Prnt_Ad, @Prnt_Soyad, @Ögr_ID, @birthDate, @City, @Tlf)
       `);
 
     res.status(200).json({ message: 'Kayıt başarılı!' });
