@@ -39,6 +39,12 @@ const portSignParent = 5178;
 appSignParent.use(cors());
 appSignParent.use(bodyParser.json());
 
+//forgot password
+const appF = express();
+const portF = 5000;
+appF.use(cors());
+appF.use(bodyParser.json());
+
 //login sorgusu
 appLogin.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -249,3 +255,125 @@ appSignParent.listen(portSignParent, () => {
   console.log(`Express server ${portSignParent} portunda çalışıyor`);
 });
 
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'fadimecosgun146@gmail.com', // Gönderen e-posta adresi
+    pass: 'eqnx nrzg qmpz bwrn'   // E-posta şifresi (Güvenlik açısından uygulama şifresi kullanmanız tavsiye edilir)
+  }
+});
+
+const crypto = require('crypto');
+
+function generateResetToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+
+// forgot-password
+appF.post('/api/forgot-password', async (req, res) => {
+  const { email } = req.body;
+
+  try {
+    // Veritabanına bağlanma
+    await sql.connect(config);
+
+    // E-posta adresini users tablosunda kontrol etme
+    const result = await sql.query`SELECT * FROM AllUsers WHERE Email = ${email}`;
+
+    if (result.recordset.length > 0) {
+      // Token oluşturma 
+      const resetToken = generateResetToken();
+
+      // Token'ı veritabanında kaydedin
+      await sql.query`INSERT INTO PasswordResetTokens (Email, Token) VALUES (${email}, ${resetToken})`;
+
+      // E-posta gönderme
+      const mailOptions = {
+        from: 'fadimecosgun146@gmail.com',
+        to: email,
+        subject: 'Şifre Sıfırlama Talebi',
+        html: `
+          <p>Merhaba,</p>
+          <p>Şifrenizi sıfırlamak için <a href="http://localhost:5173/ResetPassword?token=${resetToken}">buraya</a> tıklayın.</p>
+          <p>İyi günler!</p>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+      res.status(200).send('E-posta gönderildi.');
+    } else {
+      res.status(404).send('E-mail not found.');
+    }
+
+  } catch (err) {
+    console.error('Error:', err);
+    res.status(500).send('Internal server error.');
+  } finally {
+    // Bağlantıyı kapat
+    sql.close();
+  }
+});
+
+appF.post('/api/verify-token', async (req, res) => {
+  const { token } = req.body;
+
+  try {
+    await sql.connect(config);
+
+    const result = await sql.query`
+      SELECT * FROM PasswordResetTokens
+      WHERE Token = ${token} AND ProcessTime > DATEADD(HOUR, -1, GETDATE())`;
+
+    if (result.recordset.length > 0) {
+      res.status(200).send({ valid: true });
+    } else {
+      res.status(400).send({ valid: false });
+    }
+  } catch (err) {
+    console.error('Token doğrulama hatası:', err);
+    res.status(500).send('Token doğrulama hatası.');
+  } finally {
+    sql.close();
+  }
+});
+
+// Şifre güncelleme endpoint'i
+appF.post('/api/reset-password', async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  try {
+    await sql.connect(config);
+
+    // Token'ı doğrulama
+    const tokenResult = await sql.query`
+      SELECT * FROM PasswordResetTokens
+      WHERE Token = ${token} AND ProcessTime > DATEADD(HOUR, -1, GETDATE())`;
+
+    if (tokenResult.recordset.length === 0) {
+      return res.status(400).send('Geçersiz veya süresi dolmuş token.');
+    }
+
+    // Token'ı geçersiz kıl
+    await sql.query`DELETE FROM PasswordResetTokens WHERE Token = ${token}`;
+
+    // Kullanıcının e-posta adresini almak
+    const email = tokenResult.recordset[0].Email;
+
+    // Yeni şifreyi güncelle
+    const hashedPassword = bcrypt.hashSync(newPassword, 10); // Şifreyi hashleyin
+    await sql.query`
+      UPDATE AllUsers SET PasswordHash = ${hashedPassword} WHERE Email = ${email}`;
+
+    res.status(200).send('Şifre başarıyla güncellendi.');
+  } catch (err) {
+    console.error('Şifre güncelleme hatası:', err);
+    res.status(500).send('Şifre güncelleme hatası.');
+  } finally {
+    sql.close();
+  }
+});
+
+appF.listen(portF, () => {
+  console.log(`Server running at http://localhost:${portF}`);
+});
